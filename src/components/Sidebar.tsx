@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Key, Sparkles, HelpCircle, BookOpen, AlertCircle, X, ChevronRight, MessageSquare } from 'lucide-react';
-import { generateGeminiResponse, chatWithGemini, ChatMessage } from '../utils/gemini';
+import { Send, Key, Sparkles, HelpCircle, BookOpen, AlertCircle, X } from 'lucide-react';
+import { chatWithGemini } from '../utils/gemini';
+import type { ChatMessage } from '../utils/gemini';
 
 interface SidebarProps {
   documentText: string;
@@ -8,6 +9,7 @@ interface SidebarProps {
   onClose: () => void;
   apiKey: string;
   onApiKeyChange: (key: string) => void;
+  triggerPrompt?: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -16,6 +18,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onClose,
   apiKey,
   onApiKeyChange,
+  triggerPrompt,
 }) => {
   const [messages, setMessages] = useState<Array<{ sender: 'user' | 'ai'; text: string }>>([]);
   const [inputText, setInputText] = useState('');
@@ -36,6 +39,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
+
+  // Trigger prompt when passed from parent toolbar
+  useEffect(() => {
+    if (triggerPrompt && triggerPrompt.trim()) {
+      handleSend(triggerPrompt);
+    }
+  }, [triggerPrompt]);
 
   const saveApiKey = () => {
     onApiKeyChange(tempKey.trim());

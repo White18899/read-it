@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Sparkles, FileText, Presentation, File, Trash2, Sun, Moon, ArrowLeft, Heart, MoonStar } from 'lucide-react';
+import { Sparkles, FileText, Presentation, File, Trash2, Sun, ArrowLeft, Heart, MoonStar, BookOpen } from 'lucide-react';
 import { Uploader } from './components/Uploader';
 import { Reader } from './components/Reader';
 import { TTSPlayer } from './components/TTSPlayer';
@@ -453,6 +453,7 @@ export default function App() {
               onClose={() => setIsSidebarOpen(false)}
               apiKey={apiKey}
               onApiKeyChange={handleApiKeyChange}
+              triggerPrompt={sidebarTriggerText}
             />
           </>
         )}

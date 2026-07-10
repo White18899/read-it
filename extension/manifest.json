@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "read.it | Elegant Reader & AI Assistant",
+  "version": "1.0.0",
+  "description": "Listen to and analyze selected text or documents on any webpage using offline Text-to-Speech and Gemini AI.",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["sidebar.html", "sidebar.js", "sidebar.css"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
