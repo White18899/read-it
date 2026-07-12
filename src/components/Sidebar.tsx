@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Key, Sparkles, HelpCircle, BookOpen, AlertCircle, X, Mic, Play } from 'lucide-react';
-import { chatWithGemini } from '../utils/gemini';
+import { Send, Key, Sparkles, HelpCircle, BookOpen, AlertCircle, X, Mic, Play, Volume2, MessageSquare, Copy } from 'lucide-react';
 import type { ChatMessage } from '../utils/gemini';
 import type { Flashcard } from '../App';
 
@@ -13,6 +12,9 @@ interface SidebarProps {
   triggerPrompt?: string;
   onLoadFlashcards: (cards: Flashcard[]) => void;
   onSpeakText?: (text: string, sectionId: number | null) => void;
+  currentWordIndex?: number;
+  textToSpeak?: string;
+  isPlaying?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -24,6 +26,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   triggerPrompt,
   onLoadFlashcards,
   onSpeakText,
+  currentWordIndex = -1,
+  textToSpeak = '',
+  isPlaying = false,
 }) => {
   const [messages, setMessages] = useState<Array<{ sender: 'user' | 'ai'; text: string }>>([]);
   const [inputText, setInputText] = useState('');
@@ -105,11 +110,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }
 
       const text = selection.toString().trim();
+      console.log("Sidebar handleSelection: selected text = '" + text + "'");
       
       try {
         const range = selection.getRangeAt(0);
         const container = messageContainerRef.current;
-        if (container && container.contains(range.commonAncestorContainer)) {
+        const contains = container && (
+          container.contains(selection.anchorNode) ||
+          container.contains(selection.focusNode)
+        );
+        console.log("Sidebar handleSelection: container contains selection? ", contains);
+        
+        if (contains) {
           const rect = range.getBoundingClientRect();
           const containerRect = container.getBoundingClientRect();
           
@@ -229,43 +241,158 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setMessages(newMessages);
     setIsLoading(true);
 
-    try {
-      const docContext = documentText 
-        ? `\n\n[DOCUMENT CONTENT EXCERPT (first 12,000 chars)]:\n${documentText.slice(0, 12000)}`
-        : '\n\n[No document loaded]';
-      
-      const systemInstruction = `You are a helpful AI reading assistant. Below is the document context being read. Respond to the user's questions or request based on this context. Be concise, insightful, and structure your responses with clean, readable sections.`;
-      
-      const geminiHistory: ChatMessage[] = [
-        {
-          role: 'user',
-          parts: [{ text: `${systemInstruction}${docContext}` }]
-        },
-        {
-          role: 'model',
-          parts: [{ text: "Understood. I'm ready to assist you with the document. What would you like me to do?" }]
-        }
-      ];
+    // Append an empty AI message that we will populate via streaming chunks
+    const chatWithAiPlaceholder = [...newMessages, { sender: 'ai', text: '' } as const];
+    setMessages(chatWithAiPlaceholder);
 
-      messages.forEach(msg => {
-        geminiHistory.push({
-          role: msg.sender === 'user' ? 'user' : 'model',
-          parts: [{ text: msg.text }]
-        });
-      });
-
-      geminiHistory.push({
+    const docContext = documentText 
+      ? `\n\n[DOCUMENT CONTENT EXCERPT (first 12,000 chars)]:\n${documentText.slice(0, 12000)}`
+      : '\n\n[No document loaded]';
+    
+    const systemInstruction = `You are a helpful AI reading assistant. Below is the document context being read. Respond to the user's questions or request based on this context. Be concise, insightful, and structure your responses with clean, readable sections.`;
+    
+    const geminiHistory: ChatMessage[] = [
+      {
         role: 'user',
-        parts: [{ text }]
-      });
+        parts: [{ text: `${systemInstruction}${docContext}` }]
+      },
+      {
+        role: 'model',
+        parts: [{ text: "Understood. I'm ready to assist you with the document. What would you like me to do?" }]
+      }
+    ];
 
-      const response = await chatWithGemini(apiKey, geminiHistory);
-      setMessages([...newMessages, { sender: 'ai', text: response }]);
-    } catch (error: any) {
-      setErrorMessage(error.message || 'An error occurred.');
-    } finally {
-      setIsLoading(false);
+    messages.forEach(msg => {
+      // Clean previous thought markers before sending history back
+      const cleanText = msg.text.replace(/:::thought\n([\s\S]*?)\n:::\n\n?/, '');
+      geminiHistory.push({
+        role: msg.sender === 'user' ? 'user' : 'model',
+        parts: [{ text: cleanText }]
+      });
+    });
+
+    geminiHistory.push({
+      role: 'user',
+      parts: [{ text }]
+    });
+
+    const models = [
+      'gemini-2.0-flash-thinking-exp-01-21',
+      'gemini-3.5-flash',
+      'gemini-2.5-flash',
+      'gemini-1.5-flash-8b',
+    ];
+
+    let success = false;
+    let streamThoughts = '';
+    let streamText = '';
+
+    for (const model of models) {
+      if (success) break;
+      try {
+        const isThinkingModel = model.includes('thinking');
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+        
+        const requestPayload = {
+          contents: geminiHistory,
+          generationConfig: {
+            temperature: isThinkingModel ? 0.7 : 0.4,
+            ...(isThinkingModel ? {
+              thinkingConfig: {
+                thinkingBudget: -1
+              }
+            } : {})
+          }
+        };
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestPayload)
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const errMsg = errorData.error?.message || `HTTP error ${response.status}`;
+          if (errMsg.toLowerCase().includes('key') || response.status === 400) {
+            throw new Error(errMsg);
+          }
+          throw new Error(errMsg);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('Response body is not readable.');
+        }
+
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        success = true; // Mark as successful since stream opened
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const cleanLine = line.trim();
+            if (!cleanLine || !cleanLine.startsWith('data: ')) continue;
+            
+            const rawData = cleanLine.slice(6);
+            try {
+              const chunkJson = JSON.parse(rawData);
+              const parts = chunkJson.candidates?.[0]?.content?.parts;
+              if (parts) {
+                for (const part of parts) {
+                  if (part.thought || part.thoughtSignature) {
+                    streamThoughts += part.text || '';
+                  } else {
+                    streamText += part.text || '';
+                  }
+                }
+
+                // Update UI in real-time with thoughts and answers
+                let updatedOutput = '';
+                if (streamThoughts.trim()) {
+                  updatedOutput = `:::thought\n${streamThoughts.trim()}\n:::\n\n${streamText}`;
+                } else {
+                  updatedOutput = streamText;
+                }
+
+                setMessages(prev => {
+                  const copy = [...prev];
+                  if (copy.length > 0) {
+                    copy[copy.length - 1] = { sender: 'ai', text: updatedOutput };
+                  }
+                  return copy;
+                });
+              }
+            } catch (jsonErr) {
+              // Ignore partial parsing failures
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn(`Model ${model} streaming failed:`, err.message);
+        if (err.message.toLowerCase().includes('key not valid') || err.message.toLowerCase().includes('api key')) {
+          setErrorMessage(err.message);
+          setIsLoading(false);
+          // Remove the empty placeholder if key is invalid
+          setMessages(newMessages);
+          return;
+        }
+        // Fall back to next model
+      }
     }
+
+    if (!success) {
+      setErrorMessage('Failed to connect to Gemini API fallback models.');
+      setMessages(newMessages);
+    }
+    setIsLoading(false);
   };
 
   const runPresetPrompt = (type: 'summary' | 'concept' | 'qa') => {
@@ -290,7 +417,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
     handleSend(prompt);
   };
 
-  const renderMarkdown = (text: string) => {
+  const tokenizeAndHighlight = (htmlText: string, activeIndex: number) => {
+    // Regex to match HTML tags vs text content
+    const tagOrWordRegex = /(<[^>]+>|[^<>\s]+|\s+)/g;
+    const tokens = htmlText.match(tagOrWordRegex) || [];
+    
+    let wordCounter = 0;
+    const result = tokens.map((token) => {
+      if (token.startsWith('<') && token.endsWith('>')) {
+        return token;
+      }
+      if (token.trim() === '') {
+        return token;
+      }
+      
+      const isCurrent = wordCounter === activeIndex;
+      wordCounter++;
+      
+      return `<span style="background-color: ${isCurrent ? 'var(--accent)' : 'transparent'}; color: ${isCurrent ? 'var(--accent-contrast)' : 'inherit'}; font-weight: ${isCurrent ? '700' : 'inherit'}; padding: 0 2px; border-radius: 3px; transition: all 0.1s ease;" class="${isCurrent ? 'chat-word-highlight' : ''}">${token}</span>`;
+    });
+    
+    return result.join('');
+  };
+
+  const isMessagePlaying = (msgText: string) => {
+    if (!isPlaying || !textToSpeak) return false;
+    const cleanSpeak = textToSpeak.replace(/:::thought\n([\s\S]*?)\n:::\n\n?/, '').trim();
+    const cleanMsg = msgText.replace(/:::thought\n([\s\S]*?)\n:::\n\n?/, '').trim();
+    return cleanSpeak === cleanMsg;
+  };
+
+  const renderMarkdown = (text: string, isCurrentMsg?: boolean) => {
     // Extract thoughts block if present
     let thoughtHtml = '';
     let mainText = text;
@@ -316,20 +473,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
       mainText = text.replace(/:::thought\n([\s\S]*?)\n:::\n\n?/, '');
     }
 
+    // Escape HTML FIRST to prevent custom tags from being escaped
     let escaped = mainText
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
 
+    // Convert horizontal rules (e.g. ---, ***, ___ or ** by itself on a line) on escaped text
+    escaped = escaped.replace(/^(?:---|===|\*\*\*|\*\*|___)\s*$/gm, '<hr />');
+
     escaped = escaped.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
     escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
     escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     escaped = escaped.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    escaped = escaped.replace(/_([^_]+)_/g, '<em>$1</em>');
+    
+    // Clean up any remaining raw formatting marks
+    escaped = escaped.replace(/\*\*/g, '').replace(/\*/g, '');
 
     const lines = escaped.split('\n');
     const processedLines = lines.map(line => {
       const trimmed = line.trim();
 
+      if (trimmed === '<hr />') {
+        return trimmed;
+      }
       if (trimmed.startsWith('### ')) {
         return `<h3>${trimmed.slice(4)}</h3>`;
       }
@@ -341,48 +509,76 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }
 
       if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
-        return `<li>${trimmed.slice(2)}</li>`;
+        return `<li class="ul-item">${trimmed.slice(2)}</li>`;
       }
 
       const numberedMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
       if (numberedMatch) {
-        return `<li>${numberedMatch[2]}</li>`;
+        return `<li class="ol-item">${numberedMatch[2]}</li>`;
+      }
+
+      if (trimmed.startsWith('&gt; ') || trimmed.startsWith('> ')) {
+        const quoteText = trimmed.startsWith('&gt; ') ? trimmed.slice(5) : trimmed.slice(2);
+        return `<blockquote>${quoteText}</blockquote>`;
+      }
+
+      if (trimmed === '') {
+        return '';
+      }
+
+      // If it's a regular text line (not inside a pre block)
+      if (!trimmed.startsWith('<pre>') && !trimmed.startsWith('<code>') && !trimmed.endsWith('</code>') && !trimmed.endsWith('</pre>')) {
+        return `<p>${line}</p>`;
       }
 
       return line;
     });
 
     let html = '';
-    let inList = false;
+    let currentListType = ''; // 'ul', 'ol', or ''
 
     processedLines.forEach(line => {
-      const isListItem = line.startsWith('<li>');
-      if (isListItem) {
-        if (!inList) {
+      if (!line) return;
+
+      const isUnordered = line.startsWith('<li class="ul-item">');
+      const isOrdered = line.startsWith('<li class="ol-item">');
+
+      if (isUnordered) {
+        if (currentListType !== 'ul') {
+          if (currentListType) html += `</${currentListType}>`;
           html += '<ul>';
-          inList = true;
+          currentListType = 'ul';
+        }
+        const content = line.substring(20, line.length - 5);
+        html += `<li>${content}</li>`;
+      } else if (isOrdered) {
+        if (currentListType !== 'ol') {
+          if (currentListType) html += `</${currentListType}>`;
+          html += '<ol>';
+          currentListType = 'ol';
+        }
+        const content = line.substring(20, line.length - 5);
+        html += `<li>${content}</li>`;
+      } else {
+        if (currentListType) {
+          html += `</${currentListType}>`;
+          currentListType = '';
         }
         html += line;
-      } else {
-        if (inList) {
-          html += '</ul>';
-          inList = false;
-        }
-        const isHeading = line.startsWith('<h') && line.includes('</h');
-        if (isHeading || line.startsWith('<pre>')) {
-          html += line;
-        } else {
-          html += line + '<br />';
-        }
       }
     });
 
-    if (inList) {
-      html += '</ul>';
+    if (currentListType) {
+      html += `</${currentListType}>`;
+    }
+
+    let bodyHtml = html;
+    if (isCurrentMsg && currentWordIndex !== undefined && currentWordIndex !== -1) {
+      bodyHtml = tokenizeAndHighlight(html, currentWordIndex);
     }
 
     // Prepend the thought bubble if it was generated
-    const combinedHtml = thoughtHtml + html;
+    const combinedHtml = thoughtHtml + bodyHtml;
 
     return <div dangerouslySetInnerHTML={{ __html: combinedHtml }} className="markdown-body" />;
   };
@@ -639,7 +835,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   lineHeight: '1.45',
                 }}
               >
-                {msg.sender === 'user' ? msg.text : renderMarkdown(msg.text)}
+                {msg.sender === 'user' ? msg.text : renderMarkdown(msg.text, isMessagePlaying(msg.text))}
                 
                 {msg.sender === 'ai' && (() => {
                   const cards = extractFlashcards(msg.text);
@@ -671,15 +867,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   return null;
                 })()}
               </div>
-              <span
-                style={{
-                  fontSize: '0.7rem',
-                  color: 'var(--text-muted)',
+              <div 
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px',
                   alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
+                  marginTop: '2px'
                 }}
               >
-                {msg.sender === 'user' ? 'You' : 'Gemini'}
-              </span>
+                <span
+                  style={{
+                    fontSize: '0.7rem',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  {msg.sender === 'user' ? 'You' : 'Gemini'}
+                </span>
+                
+                {onSpeakText && (
+                  <button
+                    onClick={() => {
+                      const cleanMsg = msg.text.replace(/:::thought\n([\s\S]*?)\n:::\n\n?/, '').trim();
+                      console.log("Sidebar Speaker Button clicked: calling onSpeakText with: ", cleanMsg);
+                      onSpeakText(cleanMsg, null);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '2px',
+                    }}
+                    className="hover-scale"
+                    title="Read aloud"
+                  >
+                    <Volume2 size={12} />
+                  </button>
+                )}
+              </div>
             </div>
           ))}
 
@@ -754,19 +982,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 padding: '4px 6px',
-                borderRadius: 'var(--radius-sm)',
+                borderRadius: 'var(--radius-md)',
                 boxShadow: 'var(--shadow-md)',
                 zIndex: 1000,
                 background: 'var(--surface)',
                 border: '1px solid var(--border)',
                 pointerEvents: 'auto',
+                gap: '4px',
               }}
             >
+              {/* Read button */}
               <button
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                }}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
+                  console.log("Sidebar Read Aloud click: calling onSpeakText with selectedText = '" + selectedText + "'");
                   if (onSpeakText && selectedText) {
                     onSpeakText(selectedText, null);
                   }
@@ -778,19 +1007,117 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   background: 'transparent',
                   border: 'none',
                   borderRadius: 'var(--radius-sm)',
-                  padding: '4px 8px',
+                  padding: '4px 6px',
                   color: 'var(--text-primary)',
-                  fontSize: '0.75rem',
+                  fontSize: '0.7rem',
                   fontWeight: 500,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
+                  gap: '4px',
                 }}
                 className="hover-scale"
+                title="Read aloud"
               >
-                <Play size={12} style={{ color: 'var(--accent)' }} />
-                <span style={{ color: 'var(--text-primary)' }}>Read Aloud</span>
+                <Play size={11} style={{ color: 'var(--accent)' }} />
+                <span>Read</span>
+              </button>
+              
+              <div style={{ width: '1px', height: '14px', background: 'var(--border)', alignSelf: 'stretch', margin: '0 2px' }} />
+
+              {/* Explain button */}
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  handleSend(`Explain this part: "${selectedText}"`);
+                  window.getSelection()?.removeAllRanges();
+                  setToolbarCoords(null);
+                  setSelectedText('');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '4px 6px',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.7rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+                className="hover-scale"
+                title="Explain"
+              >
+                <Sparkles size={11} style={{ color: '#a855f7' }} />
+                <span>Explain</span>
+              </button>
+
+              <div style={{ width: '1px', height: '14px', background: 'var(--border)', alignSelf: 'stretch', margin: '0 2px' }} />
+
+              {/* Ask button */}
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setInputText(`Regarding "${selectedText}": `);
+                  window.getSelection()?.removeAllRanges();
+                  setToolbarCoords(null);
+                  setSelectedText('');
+                  setTimeout(() => {
+                    const inputEl = document.querySelector('input[placeholder="Ask AI about this document..."]') as HTMLInputElement;
+                    if (inputEl) inputEl.focus();
+                  }, 50);
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '4px 6px',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.7rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+                className="hover-scale"
+                title="Ask about this"
+              >
+                <MessageSquare size={11} style={{ color: '#3b82f6' }} />
+                <span>Ask</span>
+              </button>
+
+              <div style={{ width: '1px', height: '14px', background: 'var(--border)', alignSelf: 'stretch', margin: '0 2px' }} />
+
+              {/* Copy button */}
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  navigator.clipboard.writeText(selectedText);
+                  window.getSelection()?.removeAllRanges();
+                  setToolbarCoords(null);
+                  setSelectedText('');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '4px 6px',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.7rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+                className="hover-scale"
+                title="Copy selection"
+              >
+                <Copy size={11} style={{ color: '#10b981' }} />
+                <span>Copy</span>
               </button>
             </div>
           )}
@@ -892,6 +1219,53 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Global CSS Inject for markdown body */}
       <style dangerouslySetInnerHTML={{ __html: `
+        .markdown-body {
+          line-height: 1.6;
+          color: var(--text-primary);
+          font-size: 0.875rem;
+        }
+        .markdown-body p {
+          margin: 6px 0 10px 0;
+        }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 {
+          color: var(--text-primary);
+          font-weight: 600;
+          margin: 14px 0 6px 0;
+        }
+        .markdown-body h1 { font-size: 1.2rem; }
+        .markdown-body h2 { font-size: 1.05rem; }
+        .markdown-body h3 { font-size: 0.95rem; }
+        .markdown-body ul, .markdown-body ol {
+          margin: 6px 0 10px 0;
+          padding-left: 20px;
+        }
+        .markdown-body li {
+          margin-bottom: 4px;
+          list-style-type: disc;
+        }
+        .markdown-body li li {
+          list-style-type: circle;
+        }
+        .markdown-body strong {
+          color: var(--accent);
+          font-weight: 600;
+        }
+        .markdown-body em {
+          font-style: italic;
+          color: var(--text-secondary);
+        }
+        .markdown-body hr {
+          border: 0;
+          border-top: 1px solid var(--border);
+          margin: 14px 0;
+        }
+        .markdown-body blockquote {
+          border-left: 3px solid var(--accent);
+          padding-left: 12px;
+          color: var(--text-secondary);
+          font-style: italic;
+          margin: 6px 0 10px 0;
+        }
         .markdown-body pre {
           background: var(--background);
           padding: 8px;

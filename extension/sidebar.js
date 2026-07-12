@@ -643,20 +643,31 @@
       mainText = text.replace(/:::thought\n([\s\S]*?)\n:::\n\n?/, '');
     }
 
+    // Escape HTML FIRST to prevent custom tags from being escaped
     let escaped = mainText
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
 
+    // Convert horizontal rules (e.g. ---, ***, ___ or ** by itself on a line) on escaped text
+    escaped = escaped.replace(/^(?:---|===|\*\*\*|\*\*|___)\s*$/gm, '<hr />');
+
     escaped = escaped.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
     escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
     escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     escaped = escaped.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    escaped = escaped.replace(/_([^_]+)_/g, '<em>$1</em>');
+    
+    // Clean up any remaining raw formatting marks
+    escaped = escaped.replace(/\*\*/g, '').replace(/\*/g, '');
 
     const lines = escaped.split('\n');
     const processedLines = lines.map(line => {
       const trimmed = line.trim();
 
+      if (trimmed === '<hr />') {
+        return trimmed;
+      }
       if (trimmed.startsWith('### ')) {
         return `<h3>${trimmed.slice(4)}</h3>`;
       }
@@ -668,44 +679,67 @@
       }
 
       if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
-        return `<li>${trimmed.slice(2)}</li>`;
+        return `<li class="ul-item">${trimmed.slice(2)}</li>`;
       }
 
       const numberedMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
       if (numberedMatch) {
-        return `<li>${numberedMatch[2]}</li>`;
+        return `<li class="ol-item">${numberedMatch[2]}</li>`;
+      }
+
+      if (trimmed.startsWith('&gt; ') || trimmed.startsWith('> ')) {
+        const quoteText = trimmed.startsWith('&gt; ') ? trimmed.slice(5) : trimmed.slice(2);
+        return `<blockquote>${quoteText}</blockquote>`;
+      }
+
+      if (trimmed === '') {
+        return '';
+      }
+
+      // If it's a regular text line (not inside a pre block)
+      if (!trimmed.startsWith('<pre>') && !trimmed.startsWith('<code>') && !trimmed.endsWith('</code>') && !trimmed.endsWith('</pre>')) {
+        return `<p>${line}</p>`;
       }
 
       return line;
     });
 
     let html = '';
-    let inList = false;
+    let currentListType = ''; // 'ul', 'ol', or ''
 
     processedLines.forEach(line => {
-      const isListItem = line.startsWith('<li>');
-      if (isListItem) {
-        if (!inList) {
+      if (!line) return;
+
+      const isUnordered = line.startsWith('<li class="ul-item">');
+      const isOrdered = line.startsWith('<li class="ol-item">');
+
+      if (isUnordered) {
+        if (currentListType !== 'ul') {
+          if (currentListType) html += `</${currentListType}>`;
           html += '<ul>';
-          inList = true;
+          currentListType = 'ul';
+        }
+        const content = line.substring(20, line.length - 5);
+        html += `<li>${content}</li>`;
+      } else if (isOrdered) {
+        if (currentListType !== 'ol') {
+          if (currentListType) html += `</${currentListType}>`;
+          html += '<ol>';
+          currentListType = 'ol';
+        }
+        const content = line.substring(20, line.length - 5);
+        html += `<li>${content}</li>`;
+      } else {
+        if (currentListType) {
+          html += `</${currentListType}>`;
+          currentListType = '';
         }
         html += line;
-      } else {
-        if (inList) {
-          html += '</ul>';
-          inList = false;
-        }
-        const isHeading = line.startsWith('<h') && line.includes('</h');
-        if (isHeading || line.startsWith('<pre>')) {
-          html += line;
-        } else {
-          html += line + '<br />';
-        }
       }
     });
 
-    if (inList) {
-      html += '</ul>';
+    if (currentListType) {
+      html += `</${currentListType}>`;
     }
 
     return thoughtHtml + `<div class="markdown-body">${html}</div>`;

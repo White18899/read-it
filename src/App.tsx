@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Sparkles, FileText, Presentation, File, Trash2, Sun, ArrowLeft, Heart, MoonStar, BookOpen, SkipBack, SkipForward, Pause } from 'lucide-react';
+import { Sparkles, FileText, Presentation, File, Trash2, Sun, ArrowLeft, Heart, MoonStar, BookOpen, SkipBack, SkipForward, Pause, Play, Square } from 'lucide-react';
 import { Uploader } from './components/Uploader';
 import { Reader } from './components/Reader';
 import { TTSPlayer } from './components/TTSPlayer';
@@ -58,6 +58,7 @@ export default function App() {
   const [currentWordIndex, setCurrentWordIndex] = useState<number>(-1);
   const [activeSectionId, setActiveSectionId] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isTtsPaused, setIsTtsPaused] = useState<boolean>(false);
   const [sidebarTriggerText, setSidebarTriggerText] = useState<string>(''); // For floating toolbar AI triggers
 
   const subtitleContainerRef = useRef<HTMLDivElement>(null);
@@ -220,10 +221,15 @@ export default function App() {
 
   // TTS Event Handlers
   const handleSpeakText = useCallback((text: string, sectionId: number | null) => {
+    console.log("App handleSpeakText: setting text = '" + text + "'");
     setTextToSpeak(text);
     setActiveSectionId(sectionId);
     setCurrentWordIndex(-1);
-    setPlayTrigger(prev => prev + 1);
+    setIsTtsPaused(false);
+    setPlayTrigger(prev => {
+      console.log("App handleSpeakText: incrementing playTrigger to ", prev + 1);
+      return prev + 1;
+    });
   }, []);
 
   const handleTtsBackward = useCallback(() => {
@@ -268,6 +274,7 @@ export default function App() {
     setCurrentWordIndex(-1);
     setActiveSectionId(null);
     setIsPlaying(false);
+    setIsTtsPaused(false);
   }, []);
 
   // Floating toolbar actions to sidebar bridge
@@ -436,6 +443,8 @@ export default function App() {
               onBackward={handleTtsBackward}
               onForward={handleTtsForward}
               playTrigger={playTrigger}
+              isPausedProp={isTtsPaused}
+              onPausedChange={setIsTtsPaused}
             />
           </div>
         )}
@@ -656,6 +665,9 @@ export default function App() {
                 setViewMode('cards');
               }}
               onSpeakText={handleSpeakText}
+              currentWordIndex={currentWordIndex}
+              textToSpeak={textToSpeak}
+              isPlaying={isPlaying}
             />
 
             {/* Floating Live Subtitles Caption Overlay Bar */}
@@ -671,43 +683,63 @@ export default function App() {
                   maxWidth: '700px',
                   padding: '16px 24px',
                   borderRadius: 'var(--radius-lg)',
-                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4)',
+                  boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.5), 0 10px 20px -10px rgba(0, 0, 0, 0.4)',
                   zIndex: 2000,
-                  background: 'rgba(15, 23, 42, 0.95)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: 'rgba(15, 23, 42, 0.88)',
+                  backdropFilter: 'blur(16px)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '10px',
+                  gap: '12px',
+                  transition: 'all 0.3s ease',
+                  pointerEvents: 'auto',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '6px' }}>
-                  <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Currently Reading • Page/Section {activeSectionId}
-                  </span>
-                  <div style={{ display: 'flex', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255, 255, 255, 0.06)', paddingBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isTtsPaused ? '#f59e0b' : 'var(--accent)', animation: isTtsPaused ? 'none' : 'pulse 1.5s infinite ease-in-out' }} />
+                    <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {isTtsPaused ? 'Speech Paused' : 'Currently Reading'} • Page {activeSectionId || 1}
+                    </span>
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                     <button
                       onClick={handleTtsBackward}
-                      style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                      style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.05)', color: '#cbd5e1', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', transition: 'all 0.2s' }}
                       className="hover-scale"
                       title="Previous page"
                     >
-                      <SkipBack size={14} />
+                      <SkipBack size={12} />
                     </button>
+                    
                     <button
-                      onClick={handleStopSpeak}
-                      style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                      onClick={() => setIsTtsPaused(!isTtsPaused)}
+                      style={{ background: 'var(--accent-gradient)', border: 'none', color: 'var(--accent-contrast)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '50%', transition: 'all 0.2s' }}
                       className="hover-scale"
-                      title="Stop speech"
+                      title={isTtsPaused ? "Resume" : "Pause"}
                     >
-                      <Pause size={14} />
+                      {isTtsPaused ? <Play size={14} style={{ marginLeft: '1px' }} /> : <Pause size={14} />}
                     </button>
+
                     <button
                       onClick={handleTtsForward}
-                      style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                      style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.05)', color: '#cbd5e1', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', transition: 'all 0.2s' }}
                       className="hover-scale"
                       title="Next page"
                     >
-                      <SkipForward size={14} />
+                      <SkipForward size={12} />
+                    </button>
+                    
+                    <div style={{ width: '1px', height: '16px', background: 'rgba(255, 255, 255, 0.1)', margin: '0 4px' }} />
+
+                    <button
+                      onClick={handleStopSpeak}
+                      style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', transition: 'all 0.2s' }}
+                      className="hover-scale"
+                      title="Stop reading"
+                    >
+                      <Square size={10} fill="#ef4444" style={{ border: 'none' }} />
                     </button>
                   </div>
                 </div>
@@ -715,19 +747,22 @@ export default function App() {
                 <div
                   ref={subtitleContainerRef}
                   style={{
-                    fontSize: '0.95rem',
-                    lineHeight: '1.6',
+                    fontSize: '1rem',
+                    lineHeight: '1.65',
                     color: '#e2e8f0',
-                    maxHeight: '100px',
+                    maxHeight: '110px',
                     overflowY: 'auto',
                     textAlign: 'justify',
                     fontFamily: 'var(--font-sans)',
+                    padding: '2px 4px',
                   }}
                 >
                   {(() => {
                     const words = textToSpeak.split(/\s+/);
                     return words.map((word, idx) => {
                       const isCurrent = currentWordIndex === idx;
+                      const cleaned = word.replace(/\*\*|#|--|\*|_/g, '');
+                      if (!cleaned.trim()) return null;
                       return (
                         <span
                           key={idx}
@@ -739,10 +774,11 @@ export default function App() {
                             backgroundColor: isCurrent ? 'var(--accent)' : 'transparent',
                             color: isCurrent ? 'var(--accent-contrast)' : 'inherit',
                             fontWeight: isCurrent ? 700 : 400,
-                            transition: 'all 0.15s ease',
+                            transition: 'all 0.1s ease',
+                            display: 'inline-block',
                           }}
                         >
-                          {word}
+                          {cleaned}
                         </span>
                       );
                     });

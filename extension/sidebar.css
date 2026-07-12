@@ -387,12 +387,59 @@ select {
   50% { transform: scale(1.2); opacity: 1; }
 }
 
+.markdown-body {
+  line-height: 1.6;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+.markdown-body p {
+  margin: 6px 0 10px 0;
+}
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin: 14px 0 6px 0;
+}
+.markdown-body h1 { font-size: 1.2rem; }
+.markdown-body h2 { font-size: 1.05rem; }
+.markdown-body h3 { font-size: 0.95rem; }
+.markdown-body ul, .markdown-body ol {
+  margin: 6px 0 10px 0;
+  padding-left: 20px;
+}
+.markdown-body li {
+  margin-bottom: 4px;
+  list-style-type: disc;
+}
+.markdown-body li li {
+  list-style-type: circle;
+}
+.markdown-body strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+.markdown-body em {
+  font-style: italic;
+  color: var(--text-secondary);
+}
+.markdown-body hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 14px 0;
+}
+.markdown-body blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin: 6px 0 10px 0;
+}
 .markdown-body pre {
   background: var(--background);
-  padding: 6px;
-  border-radius: 4px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
   overflow-x: auto;
-  margin: 6px 0;
+  margin: 8px 0;
   border: 1px solid var(--border);
 }
 .markdown-body code {
@@ -400,11 +447,11 @@ select {
   font-size: 0.85em;
   background: var(--background);
   padding: 2px 4px;
-  border-radius: 2px;
+  border-radius: 4px;
   color: #a855f7;
 }
 .markdown-body br {
   content: "";
   display: block;
-  margin-top: 4px;
+  margin-top: 6px;
 }

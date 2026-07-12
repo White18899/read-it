@@ -9,6 +9,8 @@ interface TTSPlayerProps {
   onBackward?: () => void;
   onForward?: () => void;
   playTrigger?: number;
+  isPausedProp?: boolean;
+  onPausedChange?: (paused: boolean) => void;
 }
 
 export const TTSPlayer: React.FC<TTSPlayerProps> = ({
@@ -19,6 +21,8 @@ export const TTSPlayer: React.FC<TTSPlayerProps> = ({
   onBackward,
   onForward,
   playTrigger,
+  isPausedProp,
+  onPausedChange,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -163,8 +167,8 @@ export const TTSPlayer: React.FC<TTSPlayerProps> = ({
 
   // Sync playing/paused states with the parent component
   useEffect(() => {
-    onPlayingStateChange(isPlaying && !isPaused);
-  }, [isPlaying, isPaused, onPlayingStateChange]);
+    onPlayingStateChange(isPlaying);
+  }, [isPlaying, onPlayingStateChange]);
 
   const handleEngineChange = (engine: 'browser' | 'openai' | 'cartesia') => {
     handleStopOnly();
@@ -272,7 +276,11 @@ export const TTSPlayer: React.FC<TTSPlayerProps> = ({
   };
 
   const handleSpeak = async () => {
-    if (!text) return;
+    console.log("TTSPlayer handleSpeak: start speaking, text = '" + text + "', voiceEngine = '" + voiceEngine + "'");
+    if (!text) {
+      console.warn("TTSPlayer handleSpeak: text is empty, returning.");
+      return;
+    }
 
     if (isPaused) {
       if ((voiceEngine === 'openai' || voiceEngine === 'cartesia') && audioRef.current) {
@@ -494,13 +502,45 @@ export const TTSPlayer: React.FC<TTSPlayerProps> = ({
 
   // Auto-play when explicitly triggered by selection or action
   useEffect(() => {
+    console.log("TTSPlayer playTrigger effect: playTrigger = " + playTrigger + ", text = '" + text + "'");
     if (playTrigger && text) {
       const timer = setTimeout(() => {
+        console.log("TTSPlayer playTrigger effect: calling handleSpeak()");
         handleSpeak();
       }, 80);
       return () => clearTimeout(timer);
     }
   }, [playTrigger]);
+
+  // Notify parent of local pause state changes
+  useEffect(() => {
+    onPausedChange?.(isPaused);
+  }, [isPaused, onPausedChange]);
+
+  // Sync local pause state to parent prop changes
+  useEffect(() => {
+    if (isPausedProp !== undefined && isPausedProp !== isPaused) {
+      if (isPausedProp) {
+        if (isPlaying && !isPaused) {
+          if ((voiceEngine === 'openai' || voiceEngine === 'cartesia') && audioRef.current) {
+            audioRef.current.pause();
+          } else if (typeof window !== 'undefined' && window.speechSynthesis) {
+            window.speechSynthesis.pause();
+          }
+          setIsPaused(true);
+        }
+      } else {
+        if (isPlaying && isPaused) {
+          if ((voiceEngine === 'openai' || voiceEngine === 'cartesia') && audioRef.current) {
+            audioRef.current.play().catch(e => console.error("Error resuming audio:", e));
+          } else if (typeof window !== 'undefined' && window.speechSynthesis) {
+            window.speechSynthesis.resume();
+          }
+          setIsPaused(false);
+        }
+      }
+    }
+  }, [isPausedProp, isPlaying, isPaused, voiceEngine]);
 
   const handlePause = () => {
     if (isPlaying && !isPaused) {
