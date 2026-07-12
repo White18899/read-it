@@ -63,16 +63,61 @@
         </button>
 
         <div class="settings-dropdown" id="settings-dropdown" style="display:none;">
+          <div class="form-group" style="flex-direction:row; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); padding-bottom:6px;">
+            <label style="display:flex; align-items:center; gap:6px; font-weight:500; cursor:pointer;">
+              🇮🇳 Indian Voice Assist
+            </label>
+            <input type="checkbox" id="indian-assist-checkbox" style="cursor:pointer;" />
+          </div>
+          <div class="form-group" id="indian-assist-info" style="display:none; background:var(--accent-soft); border:1px solid rgba(99, 102, 241, 0.2); padding:6px; border-radius:4px; font-size:0.65rem; color:var(--accent); line-height:1.25;">
+            Optimized: selected Indian voice at a slower rate (0.7x).
+          </div>
           <div class="form-group">
+            <label>Engine</label>
+            <select id="engine-select">
+              <option value="browser">🌐 Browser Speech (Free)</option>
+              <option value="cartesia">⚡ Cartesia AI Voice (Fast)</option>
+            </select>
+          </div>
+          <div class="form-group" id="browser-voice-group">
             <label>Voice</label>
             <select id="voice-select"></select>
+          </div>
+          <div id="cartesia-settings-group" style="display:none; flex-direction:column; gap:10px;">
+            <div class="form-group">
+              <label>Cartesia Voice</label>
+              <select id="cartesia-voice-select">
+                <option value="db6b0ed5-d5d3-463d-ae85-518a07d3c2b4">Skylar (US Female)</option>
+                <option value="f786b574-daa5-4673-aa0c-cbe3e8534c02">Katie (US Female)</option>
+                <option value="a5136bf9-224c-4d76-b823-52bd5efcffcc">Jameson (US Male)</option>
+                <option value="62ae83ad-4f6a-430b-af41-a9bede9286ca">Gemma (UK Female)</option>
+                <option value="ef191366-f52f-447a-a398-ed8c0f2943a1">Archie (UK Male)</option>
+                <option value="95856005-0332-41b0-935f-352e296aa0df">Sophie (Warm Female)</option>
+                <option value="custom">Custom Voice ID...</option>
+              </select>
+            </div>
+            <div class="form-group" id="custom-cartesia-voice-group" style="display:none;">
+              <label>Custom Voice ID</label>
+              <input type="text" id="custom-cartesia-voice-input" placeholder="Enter Voice UUID..." style="background-color: var(--background); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; padding: 4px; font-size: 0.75rem; outline: none;" />
+            </div>
+            <div class="form-group">
+              <label>Cartesia API Key</label>
+              <input type="password" id="cartesia-api-key-input" placeholder="Enter API Key..." style="background-color: var(--background); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; padding: 4px; font-size: 0.75rem; outline: none;" />
+            </div>
           </div>
           <div class="form-group">
             <div style="display:flex; justify-content:space-between;">
               <label>Speed</label>
-              <span id="speed-label">1.0x</span>
+              <span id="speed-label">0.85x</span>
             </div>
-            <input type="range" id="speed-range" min="0.5" max="2" step="0.1" value="1" style="width:100%;" />
+            <input type="range" id="speed-range" min="0.5" max="2" step="0.05" value="0.85" style="width:100%;" />
+          </div>
+          <div class="form-group" id="pitch-settings-group">
+            <div style="display:flex; justify-content:space-between;">
+              <label>Pitch (Smoothness)</label>
+              <span id="pitch-label">1.0x</span>
+            </div>
+            <input type="range" id="pitch-range" min="0.5" max="1.5" step="0.05" value="1.0" style="width:100%;" />
           </div>
         </div>
       </div>

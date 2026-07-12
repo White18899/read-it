@@ -1,14 +1,30 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Sparkles, FileText, Presentation, File, Trash2, Sun, ArrowLeft, Heart, MoonStar, BookOpen } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Sparkles, FileText, Presentation, File, Trash2, Sun, ArrowLeft, Heart, MoonStar, BookOpen, SkipBack, SkipForward, Pause } from 'lucide-react';
 import { Uploader } from './components/Uploader';
 import { Reader } from './components/Reader';
 import { TTSPlayer } from './components/TTSPlayer';
 import { Sidebar } from './components/Sidebar';
 import { parsePdf, parseDocx, parsePptx } from './utils/parsers';
+import { getRecentDocuments, saveDocument, deleteDocument } from './utils/db';
+import { PomodoroTimer } from './components/PomodoroTimer';
 
 interface DocumentSection {
   id: number;
   text: string;
+}
+
+export interface Highlight {
+  id: string;
+  text: string;
+  note?: string;
+  color: 'yellow' | 'blue' | 'purple';
+  sectionId: number;
+}
+
+export interface Flashcard {
+  id: string;
+  question: string;
+  answer: string;
 }
 
 interface RecentDocument {
@@ -17,6 +33,8 @@ interface RecentDocument {
   type: 'pdf' | 'docx' | 'pptx';
   data: any; // HTML string or { pages/slides: DocumentSection[] }
   timestamp: number;
+  file?: File; // Store raw File for high-fidelity rendering
+  highlights?: Highlight[];
 }
 
 export default function App() {
@@ -27,12 +45,38 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [apiKey, setApiKey] = useState<string>('');
 
+  // Lifted ViewMode and Flashcards states
+  const [viewMode, setViewMode] = useState<'document' | 'cards' | 'highlights'>('document');
+  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [isCardFlipped, setIsCardFlipped] = useState(false);
+  const [masteredCount, setMasteredCount] = useState(0);
+
   // TTS Synchronization State
   const [textToSpeak, setTextToSpeak] = useState<string>('');
   const [currentWordIndex, setCurrentWordIndex] = useState<number>(-1);
   const [activeSectionId, setActiveSectionId] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [sidebarTriggerText, setSidebarTriggerText] = useState<string>(''); // For floating toolbar AI triggers
+
+  const subtitleContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll the active highlighted word in the live subtitles caption widget
+  useEffect(() => {
+    if (isPlaying && textToSpeak && currentWordIndex !== -1) {
+      const container = subtitleContainerRef.current;
+      if (container) {
+        const activeWordSpan = container.querySelector('.subtitle-highlight');
+        if (activeWordSpan) {
+          activeWordSpan.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+            inline: 'nearest'
+          });
+        }
+      }
+    }
+  }, [currentWordIndex, isPlaying, textToSpeak]);
 
   // Load theme, API key, and recent docs on mount
   useEffect(() => {
@@ -49,15 +93,14 @@ export default function App() {
     const savedKey = localStorage.getItem('readit-gemini-key') || '';
     setApiKey(savedKey);
 
-    // Recent Docs
-    const savedDocs = localStorage.getItem('readit-recent-docs');
-    if (savedDocs) {
-      try {
-        setRecentDocs(JSON.parse(savedDocs));
-      } catch (e) {
-        console.error('Error parsing recent documents:', e);
-      }
-    }
+    // Recent Docs (loaded from IndexedDB to restore File blobs)
+    getRecentDocuments()
+      .then((docs) => {
+        setRecentDocs(docs);
+      })
+      .catch((e) => {
+        console.error('Error loading recent documents from database:', e);
+      });
   }, []);
 
   const toggleTheme = () => {
@@ -98,26 +141,38 @@ export default function App() {
           type,
           data: parsedData,
           timestamp: Date.now(),
+          file,
         };
 
         setActiveDoc(newDoc);
+        setViewMode('document');
+        setFlashcards([]);
+        setCurrentCardIndex(0);
+        setIsCardFlipped(false);
+        setMasteredCount(0);
         
-        // Add to history
-        const updatedRecent = [
-          newDoc,
-          ...recentDocs.filter(d => d.name !== file.name)
-        ].slice(0, 5); // Cache top 5 docs
-
-        setRecentDocs(updatedRecent);
-        
-        // Try saving, handle storage limit gracefully
+        // Save to IndexedDB (preserves raw File blobs)
         try {
-          localStorage.setItem('readit-recent-docs', JSON.stringify(updatedRecent));
-        } catch (storageErr) {
-          // If quota exceeded, save just the latest metadata (without full document contents)
-          console.warn('LocalStorage limit exceeded, saving list metadata only.');
-          const metadataDocs = updatedRecent.map(d => ({ ...d, data: d.type === 'docx' ? '[HTML]' : { pages: [], slides: [] } }));
-          localStorage.setItem('readit-recent-docs', JSON.stringify(metadataDocs));
+          await saveDocument(newDoc);
+          const docs = await getRecentDocuments();
+          
+          // Limit cache history list to top 5 documents
+          if (docs.length > 5) {
+            for (let i = 5; i < docs.length; i++) {
+              await deleteDocument(docs[i].id);
+            }
+            setRecentDocs(docs.slice(0, 5));
+          } else {
+            setRecentDocs(docs);
+          }
+        } catch (dbErr) {
+          console.error('Failed to save document to IndexedDB:', dbErr);
+          // Fallback to in-memory state update
+          const updatedRecent = [
+            newDoc,
+            ...recentDocs.filter(d => d.name !== file.name)
+          ].slice(0, 5);
+          setRecentDocs(updatedRecent);
         }
       }
     } catch (error) {
@@ -128,11 +183,17 @@ export default function App() {
     }
   };
 
-  const deleteRecentDoc = (e: React.MouseEvent, id: string) => {
+  const deleteRecentDoc = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    const updated = recentDocs.filter(d => d.id !== id);
-    setRecentDocs(updated);
-    localStorage.setItem('readit-recent-docs', JSON.stringify(updated));
+    try {
+      await deleteDocument(id);
+      const docs = await getRecentDocuments();
+      setRecentDocs(docs);
+    } catch (dbErr) {
+      console.error('Failed to delete document from database:', dbErr);
+      const updated = recentDocs.filter(d => d.id !== id);
+      setRecentDocs(updated);
+    }
     if (activeDoc?.id === id) {
       setActiveDoc(null);
       handleStopSpeak();
@@ -145,6 +206,40 @@ export default function App() {
     setActiveSectionId(sectionId);
     setCurrentWordIndex(-1);
   }, []);
+
+  const handleTtsBackward = useCallback(() => {
+    if (!activeDoc || !activeSectionId) return;
+    const sections = activeDoc.type === 'pdf' ? activeDoc.data.pages : activeDoc.data.slides;
+    if (!sections || sections.length === 0) return;
+    
+    const currentIndex = sections.findIndex((s: any) => s.id === activeSectionId);
+    if (currentIndex > 0) {
+      const prevSection = sections[currentIndex - 1];
+      handleSpeakText(prevSection.text, prevSection.id);
+      
+      // Auto-scroll PDF page into view in the document list if visual PDF is loaded
+      setTimeout(() => {
+        document.getElementById(`section-${prevSection.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 100);
+    }
+  }, [activeDoc, activeSectionId, handleSpeakText]);
+
+  const handleTtsForward = useCallback(() => {
+    if (!activeDoc || !activeSectionId) return;
+    const sections = activeDoc.type === 'pdf' ? activeDoc.data.pages : activeDoc.data.slides;
+    if (!sections || sections.length === 0) return;
+    
+    const currentIndex = sections.findIndex((s: any) => s.id === activeSectionId);
+    if (currentIndex !== -1 && currentIndex < sections.length - 1) {
+      const nextSection = sections[currentIndex + 1];
+      handleSpeakText(nextSection.text, nextSection.id);
+      
+      // Auto-scroll PDF page into view in the document list if visual PDF is loaded
+      setTimeout(() => {
+        document.getElementById(`section-${nextSection.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 100);
+    }
+  }, [activeDoc, activeSectionId, handleSpeakText]);
 
   const handleWordBoundary = useCallback((_charIndex: number, wordIndex: number) => {
     setCurrentWordIndex(wordIndex);
@@ -169,6 +264,53 @@ export default function App() {
       prompt = `Regarding this passage: "${text}"\n\n[My question]: `;
     }
     setSidebarTriggerText(prompt);
+  };  // Highlights Persistence & Navigation Handlers
+  const handleSaveHighlights = async (highlights: Highlight[]) => {
+    if (!activeDoc) return;
+    const updatedDoc = {
+      ...activeDoc,
+      highlights,
+    };
+    setActiveDoc(updatedDoc);
+    try {
+      await saveDocument(updatedDoc);
+      setRecentDocs(recentDocs.map(d => d.id === updatedDoc.id ? updatedDoc : d));
+    } catch (e) {
+      console.error('Error saving highlights:', e);
+    }
+  };
+
+
+
+  const handleDeleteHighlight = async (id: string) => {
+    if (!activeDoc) return;
+    const highlights = (activeDoc.highlights || []).filter(h => h.id !== id);
+    const updatedDoc = {
+      ...activeDoc,
+      highlights,
+    };
+    setActiveDoc(updatedDoc);
+    try {
+      await saveDocument(updatedDoc);
+      setRecentDocs(recentDocs.map(d => d.id === updatedDoc.id ? updatedDoc : d));
+    } catch (e) {
+      console.error('Error deleting highlight:', e);
+    }
+  };
+
+  const handleSelectRecentDoc = (doc: RecentDocument) => {
+    setActiveDoc(doc);
+    setViewMode('document');
+    setFlashcards([]);
+    setCurrentCardIndex(0);
+    setIsCardFlipped(false);
+    setMasteredCount(0);
+  };
+
+  const handleCardStateChange = (updates: { currentCardIndex?: number; isCardFlipped?: boolean; masteredCount?: number }) => {
+    if (updates.currentCardIndex !== undefined) setCurrentCardIndex(updates.currentCardIndex);
+    if (updates.isCardFlipped !== undefined) setIsCardFlipped(updates.isCardFlipped);
+    if (updates.masteredCount !== undefined) setMasteredCount(updates.masteredCount);
   };
 
   // Build a plain text version of the active document for Gemini context
@@ -229,7 +371,7 @@ export default function App() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#ffffff',
+                color: 'var(--accent-contrast)',
                 boxShadow: '0 4px 12px rgba(99, 102, 241, 0.2)',
               }}
             >
@@ -256,11 +398,14 @@ export default function App() {
               onWordBoundary={handleWordBoundary}
               onEnd={handleStopSpeak}
               onPlayingStateChange={setIsPlaying}
+              onBackward={handleTtsBackward}
+              onForward={handleTtsForward}
             />
           </div>
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <PomodoroTimer />
           <button
             onClick={toggleTheme}
             style={{
@@ -290,7 +435,7 @@ export default function App() {
                 border: isSidebarOpen ? 'none' : '1px solid var(--border)',
                 borderRadius: 'var(--radius-md)',
                 padding: '8px 14px',
-                color: isSidebarOpen ? '#ffffff' : 'var(--text-secondary)',
+                color: isSidebarOpen ? 'var(--accent-contrast)' : 'var(--text-secondary)',
                 fontSize: '0.85rem',
                 fontWeight: 600,
                 cursor: 'pointer',
@@ -298,7 +443,7 @@ export default function App() {
                 alignItems: 'center',
                 gap: '8px',
                 transition: 'all var(--transition-fast)',
-                boxShadow: isSidebarOpen ? '0 4px 12px rgba(99, 102, 241, 0.25)' : 'none',
+                boxShadow: isSidebarOpen ? 'var(--shadow-sunken-sm)' : 'var(--shadow-raised-sm)',
               }}
               className="hover-scale"
             >
@@ -373,7 +518,7 @@ export default function App() {
                   {recentDocs.map((doc) => (
                     <div
                       key={doc.id}
-                      onClick={() => setActiveDoc(doc)}
+                      onClick={() => handleSelectRecentDoc(doc)}
                       className="glass-panel hover-scale"
                       style={{
                         display: 'flex',
@@ -383,6 +528,7 @@ export default function App() {
                         borderRadius: 'var(--radius-md)',
                         cursor: 'pointer',
                         transition: 'all var(--transition-fast)',
+                        boxShadow: 'var(--shadow-raised-sm)',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
@@ -440,11 +586,23 @@ export default function App() {
             <Reader
               fileType={activeDoc.type}
               documentData={activeDoc.data}
+              file={activeDoc.file}
               currentWordIndex={currentWordIndex}
               activeSectionId={activeSectionId}
               isPlaying={isPlaying}
               onSpeakText={handleSpeakText}
               onAiAction={handleAiAction}
+              documentHighlights={activeDoc.highlights || []}
+              onSaveHighlights={handleSaveHighlights}
+              
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              flashcards={flashcards}
+              currentCardIndex={currentCardIndex}
+              isCardFlipped={isCardFlipped}
+              masteredCount={masteredCount}
+              onCardStateChange={handleCardStateChange}
+              onDeleteHighlight={handleDeleteHighlight}
             />
 
             <Sidebar
@@ -454,7 +612,107 @@ export default function App() {
               apiKey={apiKey}
               onApiKeyChange={handleApiKeyChange}
               triggerPrompt={sidebarTriggerText}
+              onLoadFlashcards={(cards) => {
+                setFlashcards(cards);
+                setCurrentCardIndex(0);
+                setIsCardFlipped(false);
+                setMasteredCount(0);
+                setViewMode('cards');
+              }}
             />
+
+            {/* Floating Live Subtitles Caption Overlay Bar */}
+            {isPlaying && textToSpeak && (
+              <div
+                className="glass-panel animate-fade-in"
+                style={{
+                  position: 'fixed',
+                  bottom: '24px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: '90%',
+                  maxWidth: '700px',
+                  padding: '16px 24px',
+                  borderRadius: 'var(--radius-lg)',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4)',
+                  zIndex: 2000,
+                  background: 'rgba(15, 23, 42, 0.95)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '6px' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Currently Reading • Page/Section {activeSectionId}
+                  </span>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button
+                      onClick={handleTtsBackward}
+                      style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                      className="hover-scale"
+                      title="Previous page"
+                    >
+                      <SkipBack size={14} />
+                    </button>
+                    <button
+                      onClick={handleStopSpeak}
+                      style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                      className="hover-scale"
+                      title="Stop speech"
+                    >
+                      <Pause size={14} />
+                    </button>
+                    <button
+                      onClick={handleTtsForward}
+                      style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                      className="hover-scale"
+                      title="Next page"
+                    >
+                      <SkipForward size={14} />
+                    </button>
+                  </div>
+                </div>
+                
+                <div
+                  ref={subtitleContainerRef}
+                  style={{
+                    fontSize: '0.95rem',
+                    lineHeight: '1.6',
+                    color: '#e2e8f0',
+                    maxHeight: '100px',
+                    overflowY: 'auto',
+                    textAlign: 'justify',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                >
+                  {(() => {
+                    const words = textToSpeak.split(/\s+/);
+                    return words.map((word, idx) => {
+                      const isCurrent = currentWordIndex === idx;
+                      return (
+                        <span
+                          key={idx}
+                          className={isCurrent ? 'subtitle-highlight' : ''}
+                          style={{
+                            marginRight: '0.28em',
+                            padding: '2px 4px',
+                            borderRadius: '4px',
+                            backgroundColor: isCurrent ? 'var(--accent)' : 'transparent',
+                            color: isCurrent ? 'var(--accent-contrast)' : 'inherit',
+                            fontWeight: isCurrent ? 700 : 400,
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          {word}
+                        </span>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

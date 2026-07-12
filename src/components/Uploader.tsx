@@ -59,14 +59,9 @@ export const Uploader: React.FC<UploaderProps> = ({ onFileSelect, isLoading }) =
         alignItems: 'center',
         justifyContent: 'center',
         padding: '3.5rem 2.5rem',
-        borderRadius: 'var(--radius-lg)',
-        border: isDragActive ? '2px dashed var(--accent)' : '1px dashed var(--border)',
-        backgroundColor: isDragActive ? 'var(--surface-hover)' : 'var(--surface)',
-        transition: 'all var(--transition-normal)',
         maxWidth: '560px',
         width: '100%',
         margin: 'auto',
-        boxShadow: 'var(--shadow-md)',
         cursor: 'pointer',
       }}
       onDragEnter={handleDrag}
@@ -94,7 +89,7 @@ export const Uploader: React.FC<UploaderProps> = ({ onFileSelect, isLoading }) =
           height: '72px',
           borderRadius: '50%',
           background: isDragActive ? 'var(--accent-gradient)' : 'var(--accent-soft)',
-          color: isDragActive ? '#fff' : 'var(--accent)',
+          color: isDragActive ? 'var(--accent-contrast)' : 'var(--accent)',
           marginBottom: '1.5rem',
           transition: 'all var(--transition-normal)',
         }}
@@ -187,16 +182,16 @@ export const Uploader: React.FC<UploaderProps> = ({ onFileSelect, isLoading }) =
 
       <button
         style={{
-          padding: '0.625rem 1.25rem',
+          padding: '0.75rem 1.75rem',
           borderRadius: 'var(--radius-md)',
-          border: 'none',
-          background: 'var(--accent-gradient)',
-          color: '#ffffff',
+          border: '1px solid var(--border)',
+          background: 'var(--surface)',
+          color: 'var(--text-primary)',
           fontFamily: 'var(--font-title)',
           fontSize: '0.875rem',
           fontWeight: 600,
           cursor: 'pointer',
-          boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
+          boxShadow: 'var(--shadow-raised-sm)',
           transition: 'all var(--transition-fast)',
         }}
         onClick={(e) => {

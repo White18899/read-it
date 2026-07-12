@@ -6,6 +6,7 @@
   let isSpeaking = false;
   let isPaused = false;
   let chatHistory = [];
+  let audioElement = null;
 
   const textDisplay = document.getElementById('text-display');
   const playBtn = document.getElementById('play-btn');
@@ -18,6 +19,22 @@
   const speedLabel = document.getElementById('speed-label');
   const apiAlert = document.getElementById('api-alert');
   const closeBtn = document.getElementById('close-btn');
+
+  // Indian Assist & Pitch Elements
+  const indianAssistCheckbox = document.getElementById('indian-assist-checkbox');
+  const indianAssistInfo = document.getElementById('indian-assist-info');
+  const pitchRange = document.getElementById('pitch-range');
+  const pitchLabel = document.getElementById('pitch-label');
+
+  // Multi-Engine Elements (Cartesia)
+  const engineSelect = document.getElementById('engine-select');
+  const browserVoiceGroup = document.getElementById('browser-voice-group');
+  const cartesiaSettingsGroup = document.getElementById('cartesia-settings-group');
+  const cartesiaVoiceSelect = document.getElementById('cartesia-voice-select');
+  const customCartesiaVoiceGroup = document.getElementById('custom-cartesia-voice-group');
+  const customCartesiaVoiceInput = document.getElementById('custom-cartesia-voice-input');
+  const cartesiaApiKeyInput = document.getElementById('cartesia-api-key-input');
+  const pitchSettingsGroup = document.getElementById('pitch-settings-group');
   const chatHistoryDiv = document.getElementById('chat-history');
   const chatForm = document.getElementById('chat-form');
   const chatInput = document.getElementById('chat-input');
@@ -93,6 +110,92 @@
         option.textContent = `${voice.name} (${voice.lang})`;
         voiceSelect.appendChild(option);
       });
+
+      const isIndianEnabled = localStorage.getItem('readit-indian-assist') === 'true';
+      const savedVoice = localStorage.getItem('readit-selected-voice');
+      let voiceToSelect = null;
+
+      if (isIndianEnabled) {
+        // Try to find Indian English voice first
+        voiceToSelect = displayList.find(v => {
+          const lang = v.lang.toLowerCase();
+          const name = v.name.toLowerCase();
+          return (lang === 'en-in' || lang === 'en_in') || 
+                 (lang.startsWith('en') && (name.includes('india') || name.includes('in-')));
+        });
+      }
+
+      if (!voiceToSelect && savedVoice) {
+        voiceToSelect = displayList.find(v => v.name === savedVoice);
+      }
+
+      if (!voiceToSelect) {
+        // Find neat female voice to select by default
+        voiceToSelect = displayList.find(v => {
+          const name = v.name.toLowerCase();
+          return name.includes('female') ||
+                 name.includes('zira') ||
+                 name.includes('samantha') ||
+                 name.includes('hazel') ||
+                 name.includes('google us english') ||
+                 name.includes('karen') ||
+                 name.includes('natural');
+        });
+      }
+
+      if (voiceToSelect) {
+        voiceSelect.value = voiceToSelect.name;
+      }
+    }
+  }
+
+  // Load settings from localStorage
+  const savedEngine = localStorage.getItem('readit-engine') || 'browser';
+  engineSelect.value = savedEngine;
+  updateEngineUI(savedEngine);
+
+  const savedSpeed = localStorage.getItem('readit-speed') || '0.85';
+  speedRange.value = savedSpeed;
+  speedLabel.textContent = `${parseFloat(savedSpeed).toFixed(1)}x`;
+
+  const savedPitch = localStorage.getItem('readit-pitch') || '1.0';
+  pitchRange.value = savedPitch;
+  pitchLabel.textContent = `${parseFloat(savedPitch).toFixed(1)}x`;
+
+  const savedIndianAssist = localStorage.getItem('readit-indian-assist') === 'true';
+  indianAssistCheckbox.checked = savedIndianAssist;
+  indianAssistInfo.style.display = savedIndianAssist ? 'block' : 'none';
+
+  const savedCartesiaVoice = localStorage.getItem('readit-cartesia-voice') || 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4';
+  const standardCartesiaVoices = [
+    'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4',
+    'f786b574-daa5-4673-aa0c-cbe3e8534c02',
+    'a5136bf9-224c-4d76-b823-52bd5efcffcc',
+    '62ae83ad-4f6a-430b-af41-a9bede9286ca',
+    'ef191366-f52f-447a-a398-ed8c0f2943a1',
+    '95856005-0332-41b0-935f-352e296aa0df'
+  ];
+  if (standardCartesiaVoices.includes(savedCartesiaVoice)) {
+    cartesiaVoiceSelect.value = savedCartesiaVoice;
+    customCartesiaVoiceGroup.style.display = 'none';
+  } else {
+    cartesiaVoiceSelect.value = 'custom';
+    customCartesiaVoiceGroup.style.display = 'flex';
+    customCartesiaVoiceInput.value = savedCartesiaVoice;
+  }
+
+  const savedCartesiaApiKey = localStorage.getItem('readit-cartesia-key') || '';
+  cartesiaApiKeyInput.value = savedCartesiaApiKey;
+
+  function updateEngineUI(engine) {
+    if (engine === 'browser') {
+      browserVoiceGroup.style.display = 'flex';
+      cartesiaSettingsGroup.style.display = 'none';
+      pitchSettingsGroup.style.display = 'flex';
+    } else {
+      browserVoiceGroup.style.display = 'none';
+      cartesiaSettingsGroup.style.display = 'flex';
+      pitchSettingsGroup.style.display = 'none';
     }
   }
 
@@ -101,38 +204,202 @@
     window.speechSynthesis.onvoiceschanged = loadVoices;
   }
 
+  // Update change/input listeners
+  engineSelect.addEventListener('change', () => {
+    stopSpeaking();
+    const engine = engineSelect.value;
+    localStorage.setItem('readit-engine', engine);
+    updateEngineUI(engine);
+  });
+
+  voiceSelect.addEventListener('change', () => {
+    if (!indianAssistCheckbox.checked) {
+      localStorage.setItem('readit-selected-voice', voiceSelect.value);
+    }
+  });
+
   speedRange.addEventListener('input', () => {
-    speedLabel.textContent = `${parseFloat(speedRange.value).toFixed(1)}x`;
+    const rate = parseFloat(speedRange.value);
+    speedLabel.textContent = `${rate.toFixed(1)}x`;
+    if (!indianAssistCheckbox.checked) {
+      localStorage.setItem('readit-speed', speedRange.value);
+    }
+  });
+
+  pitchRange.addEventListener('input', () => {
+    const pitch = parseFloat(pitchRange.value);
+    pitchLabel.textContent = `${pitch.toFixed(1)}x`;
+    localStorage.setItem('readit-pitch', pitchRange.value);
+  });
+
+  cartesiaVoiceSelect.addEventListener('change', () => {
+    stopSpeaking();
+    const voiceVal = cartesiaVoiceSelect.value;
+    if (voiceVal === 'custom') {
+      customCartesiaVoiceGroup.style.display = 'flex';
+      localStorage.setItem('readit-cartesia-voice', customCartesiaVoiceInput.value);
+    } else {
+      customCartesiaVoiceGroup.style.display = 'none';
+      localStorage.setItem('readit-cartesia-voice', voiceVal);
+    }
+  });
+
+  customCartesiaVoiceInput.addEventListener('input', () => {
+    stopSpeaking();
+    localStorage.setItem('readit-cartesia-voice', customCartesiaVoiceInput.value.trim());
+  });
+
+  cartesiaApiKeyInput.addEventListener('input', () => {
+    localStorage.setItem('readit-cartesia-key', cartesiaApiKeyInput.value.trim());
+  });
+
+  indianAssistCheckbox.addEventListener('change', () => {
+    const enabled = indianAssistCheckbox.checked;
+    localStorage.setItem('readit-indian-assist', enabled ? 'true' : 'false');
+    indianAssistInfo.style.display = enabled ? 'block' : 'none';
+    
+    if (enabled) {
+      // Backup current custom settings
+      localStorage.setItem('readit-backup-voice', voiceSelect.value);
+      localStorage.setItem('readit-backup-speed', speedRange.value);
+      
+      // Auto-select Indian English voice if available
+      const indianVoice = voices.find(v => {
+        const lang = v.lang.toLowerCase();
+        const name = v.name.toLowerCase();
+        return (lang === 'en-in' || lang === 'en_in') || 
+               (lang.startsWith('en') && (name.includes('india') || name.includes('in-')));
+      });
+      
+      if (indianVoice) {
+        voiceSelect.value = indianVoice.name;
+      }
+      
+      // Set to slower, smoother rate (0.7x)
+      speedRange.value = 0.7;
+      speedLabel.textContent = '0.7x';
+    } else {
+      // Revert to backup settings
+      const backupVoice = localStorage.getItem('readit-backup-voice');
+      const backupSpeed = localStorage.getItem('readit-backup-speed') || '0.85';
+      
+      if (backupVoice && voices.some(v => v.name === backupVoice)) {
+        voiceSelect.value = backupVoice;
+      }
+      speedRange.value = backupSpeed;
+      speedLabel.textContent = `${parseFloat(backupSpeed).toFixed(1)}x`;
+    }
   });
 
   // Speaking controls
-  playBtn.addEventListener('click', () => {
+  playBtn.addEventListener('click', async () => {
+    const engine = engineSelect.value;
+
     if (isPaused) {
-      window.speechSynthesis.resume();
+      if (engine === 'cartesia' && audioElement) {
+        audioElement.play();
+      } else {
+        window.speechSynthesis.resume();
+      }
       isPaused = false;
       setSpeechState(true, false);
       return;
     }
 
     if (!currentText) return;
-    window.speechSynthesis.cancel();
+    stopSpeaking();
 
-    utterance = new SpeechSynthesisUtterance(currentText);
-    const selectedVoiceName = voiceSelect.value;
-    const voice = voices.find(v => v.name === selectedVoiceName);
-    if (voice) utterance.voice = voice;
-    utterance.rate = parseFloat(speedRange.value);
+    if (engine === 'browser') {
+      utterance = new SpeechSynthesisUtterance(currentText);
+      const selectedVoiceName = voiceSelect.value;
+      const voice = voices.find(v => v.name === selectedVoiceName);
+      if (voice) utterance.voice = voice;
+      utterance.rate = parseFloat(speedRange.value);
+      utterance.pitch = parseFloat(pitchRange.value);
 
-    utterance.onend = () => stopSpeaking();
-    utterance.onerror = () => stopSpeaking();
+      utterance.onend = () => stopSpeaking();
+      utterance.onerror = () => stopSpeaking();
 
-    window.speechSynthesis.speak(utterance);
-    setSpeechState(true, false);
+      window.speechSynthesis.speak(utterance);
+      setSpeechState(true, false);
+    } else {
+      // Cartesia engine
+      const cartesiaApiKey = cartesiaApiKeyInput.value.trim();
+      const cartesiaVoice = cartesiaVoiceSelect.value === 'custom' 
+        ? customCartesiaVoiceInput.value.trim() 
+        : cartesiaVoiceSelect.value;
+
+      if (!cartesiaApiKey) {
+        alert('Please enter your Cartesia API Key in settings first.');
+        return;
+      }
+      if (!cartesiaVoice) {
+        alert('Please enter a Cartesia Voice ID in settings first.');
+        return;
+      }
+
+      setSpeechState(true, false);
+      try {
+        const response = await fetch('https://api.cartesia.ai/tts/bytes', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${cartesiaApiKey}`,
+            'Cartesia-Version': '2024-06-10',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model_id: 'sonic-3.5',
+            transcript: currentText.replace(/<[^>]*>/g, '').trim(),
+            voice: {
+              mode: 'id',
+              id: cartesiaVoice,
+            },
+            output_format: {
+              container: 'mp3',
+              sample_rate: 44100,
+              bit_rate: 128000
+            },
+            generation_config: {
+              speed: Math.max(0.6, Math.min(1.5, parseFloat(speedRange.value))),
+              volume: 1.0,
+            }
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const msg = errorData.error?.message || `HTTP error! status: ${response.status}`;
+          throw new Error(msg);
+        }
+
+        const blob = await response.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        audioElement = new Audio(audioUrl);
+        audioElement.playbackRate = 1.0;
+
+        audioElement.onended = () => stopSpeaking();
+        audioElement.onerror = () => {
+          stopSpeaking();
+          alert('Error playing audio from Cartesia TTS.');
+        };
+
+        await audioElement.play();
+      } catch (err) {
+        console.error('Cartesia TTS error:', err);
+        alert(`Failed to generate Cartesia voice: ${err.message}`);
+        stopSpeaking();
+      }
+    }
   });
 
   pauseBtn.addEventListener('click', () => {
+    const engine = engineSelect.value;
     if (isSpeaking && !isPaused) {
-      window.speechSynthesis.pause();
+      if (engine === 'cartesia' && audioElement) {
+        audioElement.pause();
+      } else {
+        window.speechSynthesis.pause();
+      }
       isPaused = true;
       setSpeechState(true, true);
     }
@@ -141,7 +408,13 @@
   stopBtn.addEventListener('click', stopSpeaking);
 
   function stopSpeaking() {
-    window.speechSynthesis.cancel();
+    if (audioElement) {
+      audioElement.pause();
+      audioElement = null;
+    }
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
     setSpeechState(false, false);
   }
 
@@ -224,23 +497,51 @@
     });
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: requestHistory,
-          generationConfig: { temperature: 0.5 }
-        })
-      });
+      const models = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-1.5-flash-8b'];
+      let answer = null;
+      let lastError = null;
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `HTTP error ${response.status}`);
+      for (const model of models) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: requestHistory,
+              generationConfig: { temperature: 0.5 }
+            })
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errMsg = errorData.error?.message || `HTTP error ${response.status}`;
+            if (errMsg.toLowerCase().includes('key not valid') || response.status === 400) {
+              throw new Error(errMsg);
+            }
+            throw new Error(errMsg);
+          }
+
+          const data = await response.json();
+          const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (candidateText) {
+            answer = candidateText;
+            break;
+          } else {
+            throw new Error('API returned an empty response.');
+          }
+        } catch (err) {
+          console.warn(`Model ${model} failed:`, err);
+          lastError = err;
+          if (err.message.toLowerCase().includes('key not valid') || err.message.toLowerCase().includes('api key')) {
+            throw err;
+          }
+        }
       }
 
-      const data = await response.json();
-      const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from API.';
+      if (!answer) {
+        throw lastError || new Error('Failed to generate response after trying all available fallback models.');
+      }
       
       loadingBubble.remove();
       appendBubble('ai', answer);
@@ -287,16 +588,70 @@
   }
 
   function renderMarkdown(text) {
-    let html = text
+    let escaped = text
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
 
-    html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    html = html.replace(/\n/g, '<br />');
+    escaped = escaped.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+    escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+    escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    escaped = escaped.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+    const lines = escaped.split('\n');
+    const processedLines = lines.map(line => {
+      const trimmed = line.trim();
+
+      if (trimmed.startsWith('### ')) {
+        return `<h3>${trimmed.slice(4)}</h3>`;
+      }
+      if (trimmed.startsWith('## ')) {
+        return `<h2>${trimmed.slice(3)}</h2>`;
+      }
+      if (trimmed.startsWith('# ')) {
+        return `<h1>${trimmed.slice(2)}</h1>`;
+      }
+
+      if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
+        return `<li>${trimmed.slice(2)}</li>`;
+      }
+
+      const numberedMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
+      if (numberedMatch) {
+        return `<li>${numberedMatch[2]}</li>`;
+      }
+
+      return line;
+    });
+
+    let html = '';
+    let inList = false;
+
+    processedLines.forEach(line => {
+      const isListItem = line.startsWith('<li>');
+      if (isListItem) {
+        if (!inList) {
+          html += '<ul>';
+          inList = true;
+        }
+        html += line;
+      } else {
+        if (inList) {
+          html += '</ul>';
+          inList = false;
+        }
+        const isHeading = line.startsWith('<h') && line.includes('</h');
+        if (isHeading || line.startsWith('<pre>')) {
+          html += line;
+        } else {
+          html += line + '<br />';
+        }
+      }
+    });
+
+    if (inList) {
+      html += '</ul>';
+    }
 
     return `<div class="markdown-body">${html}</div>`;
   }
