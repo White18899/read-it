@@ -8,6 +8,7 @@ interface TTSPlayerProps {
   onPlayingStateChange: (isPlaying: boolean) => void;
   onBackward?: () => void;
   onForward?: () => void;
+  playTrigger?: number;
 }
 
 export const TTSPlayer: React.FC<TTSPlayerProps> = ({
@@ -17,6 +18,7 @@ export const TTSPlayer: React.FC<TTSPlayerProps> = ({
   onPlayingStateChange,
   onBackward,
   onForward,
+  playTrigger,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -489,6 +491,16 @@ export const TTSPlayer: React.FC<TTSPlayerProps> = ({
       return () => clearTimeout(timer);
     }
   }, [text]);
+
+  // Auto-play when explicitly triggered by selection or action
+  useEffect(() => {
+    if (playTrigger && text) {
+      const timer = setTimeout(() => {
+        handleSpeak();
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [playTrigger]);
 
   const handlePause = () => {
     if (isPlaying && !isPaused) {

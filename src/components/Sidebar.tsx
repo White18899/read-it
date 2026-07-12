@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Key, Sparkles, HelpCircle, BookOpen, AlertCircle, X, Mic } from 'lucide-react';
+import { Send, Key, Sparkles, HelpCircle, BookOpen, AlertCircle, X, Mic, Play } from 'lucide-react';
 import { chatWithGemini } from '../utils/gemini';
 import type { ChatMessage } from '../utils/gemini';
 import type { Flashcard } from '../App';
@@ -12,6 +12,7 @@ interface SidebarProps {
   onApiKeyChange: (key: string) => void;
   triggerPrompt?: string;
   onLoadFlashcards: (cards: Flashcard[]) => void;
+  onSpeakText?: (text: string, sectionId: number | null) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -22,6 +23,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onApiKeyChange,
   triggerPrompt,
   onLoadFlashcards,
+  onSpeakText,
 }) => {
   const [messages, setMessages] = useState<Array<{ sender: 'user' | 'ai'; text: string }>>([]);
   const [inputText, setInputText] = useState('');
@@ -35,6 +37,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const recognitionRef = useRef<any>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Chat text selection reading states
+  const [selectedText, setSelectedText] = useState<string>('');
+  const [toolbarCoords, setToolbarCoords] = useState<{ top: number; left: number } | null>(null);
+  const messageContainerRef = useRef<HTMLDivElement>(null);
 
   // Sync internal key when prop changes
   useEffect(() => {
@@ -85,6 +92,57 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       recognitionRef.current = rec;
     }
+  }, []);
+
+  // Listen for selection completion events inside the chat messages area
+  useEffect(() => {
+    const handleSelection = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+        setToolbarCoords(null);
+        setSelectedText('');
+        return;
+      }
+
+      const text = selection.toString().trim();
+      
+      try {
+        const range = selection.getRangeAt(0);
+        const container = messageContainerRef.current;
+        if (container && container.contains(range.commonAncestorContainer)) {
+          const rect = range.getBoundingClientRect();
+          const containerRect = container.getBoundingClientRect();
+          
+          setToolbarCoords({
+            top: rect.top - containerRect.top + container.scrollTop - 40,
+            left: rect.left - containerRect.left + rect.width / 2,
+          });
+          setSelectedText(text);
+        }
+      } catch (err) {
+        console.error('Error calculating selection coords:', err);
+      }
+    };
+
+    document.addEventListener('mouseup', handleSelection);
+    document.addEventListener('touchend', handleSelection);
+    document.addEventListener('keyup', handleSelection);
+
+    const handleSelectionCollapse = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) {
+        setToolbarCoords(null);
+        setSelectedText('');
+      }
+    };
+    document.addEventListener('selectionchange', handleSelectionCollapse);
+
+    return () => {
+      document.removeEventListener('mouseup', handleSelection);
+      document.removeEventListener('touchend', handleSelection);
+      document.removeEventListener('keyup', handleSelection);
+      document.removeEventListener('selectionchange', handleSelectionCollapse);
+    };
   }, []);
 
   const toggleListening = () => {
@@ -520,6 +578,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Messages */}
         <div
+          ref={messageContainerRef}
           style={{
             flex: 1,
             overflowY: 'auto',
@@ -527,6 +586,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             display: 'flex',
             flexDirection: 'column',
             gap: '16px',
+            position: 'relative',
           }}
         >
           {messages.map((msg, i) => (
@@ -653,6 +713,54 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
               <div>{errorMessage}</div>
+            </div>
+          )}
+          {toolbarCoords && selectedText && (
+            <div
+              className="glass-panel animate-scale-up"
+              style={{
+                position: 'absolute',
+                top: `${toolbarCoords.top}px`,
+                left: `${toolbarCoords.left}px`,
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '4px 6px',
+                borderRadius: 'var(--radius-sm)',
+                boxShadow: 'var(--shadow-md)',
+                zIndex: 1000,
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                pointerEvents: 'auto',
+              }}
+            >
+              <button
+                onClick={() => {
+                  if (onSpeakText) {
+                    onSpeakText(selectedText, null);
+                  }
+                  window.getSelection()?.removeAllRanges();
+                  setToolbarCoords(null);
+                  setSelectedText('');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '4px 8px',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+                className="hover-scale"
+              >
+                <Play size={12} style={{ color: 'var(--accent)' }} />
+                <span style={{ color: 'var(--text-primary)' }}>Read Aloud</span>
+              </button>
             </div>
           )}
           <div ref={chatEndRef} />

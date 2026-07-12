@@ -652,6 +652,7 @@ export default function App() {
                 setMasteredCount(0);
                 setViewMode('cards');
               }}
+              onSpeakText={handleSpeakText}
             />
 
             {/* Floating Live Subtitles Caption Overlay Bar */}
