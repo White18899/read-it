@@ -496,6 +496,7 @@ export const Reader: React.FC<ReaderProps> = ({
             }}
           >
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 onSpeakText(selectedText, null);
                 window.getSelection()?.removeAllRanges();
@@ -521,6 +522,7 @@ export const Reader: React.FC<ReaderProps> = ({
             <div style={{ width: '1px', background: 'var(--border)', margin: '4px 0', alignSelf: 'stretch' }} />
             
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 onAiAction('explain', selectedText);
                 window.getSelection()?.removeAllRanges();
@@ -544,6 +546,7 @@ export const Reader: React.FC<ReaderProps> = ({
             </button>
             
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 onAiAction('chat', selectedText);
                 window.getSelection()?.removeAllRanges();
@@ -567,6 +570,7 @@ export const Reader: React.FC<ReaderProps> = ({
             </button>
 
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 navigator.clipboard.writeText(selectedText);
                 setIsCopied(true);

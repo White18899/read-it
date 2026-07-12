@@ -763,8 +763,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }}
             >
               <button
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                }}
                 onClick={() => {
-                  if (onSpeakText) {
+                  if (onSpeakText && selectedText) {
                     onSpeakText(selectedText, null);
                   }
                   window.getSelection()?.removeAllRanges();
