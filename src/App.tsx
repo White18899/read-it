@@ -150,6 +150,23 @@ export default function App() {
         setCurrentCardIndex(0);
         setIsCardFlipped(false);
         setMasteredCount(0);
+
+        // Pre-populate default speech text to the first section/page
+        let firstText = '';
+        let firstId: number | null = null;
+        if (newDoc.type === 'docx') {
+          firstText = newDoc.data.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+          firstId = 0;
+        } else {
+          const sections = newDoc.type === 'pdf' ? newDoc.data.pages : newDoc.data.slides;
+          if (sections && sections.length > 0) {
+            firstText = sections[0].text;
+            firstId = sections[0].id;
+          }
+        }
+        setTextToSpeak(firstText);
+        setActiveSectionId(firstId);
+        setCurrentWordIndex(-1);
         
         // Save to IndexedDB (preserves raw File blobs)
         try {
@@ -246,7 +263,6 @@ export default function App() {
   }, []);
 
   const handleStopSpeak = useCallback(() => {
-    setTextToSpeak('');
     setCurrentWordIndex(-1);
     setActiveSectionId(null);
     setIsPlaying(false);
@@ -305,6 +321,23 @@ export default function App() {
     setCurrentCardIndex(0);
     setIsCardFlipped(false);
     setMasteredCount(0);
+
+    // Pre-populate default speech text to the first section/page
+    let firstText = '';
+    let firstId: number | null = null;
+    if (doc.type === 'docx') {
+      firstText = doc.data.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      firstId = 0;
+    } else {
+      const sections = doc.type === 'pdf' ? doc.data.pages : doc.data.slides;
+      if (sections && sections.length > 0) {
+        firstText = sections[0].text;
+        firstId = sections[0].id;
+      }
+    }
+    setTextToSpeak(firstText);
+    setActiveSectionId(firstId);
+    setCurrentWordIndex(-1);
   };
 
   const handleCardStateChange = (updates: { currentCardIndex?: number; isCardFlipped?: boolean; masteredCount?: number }) => {
@@ -391,7 +424,7 @@ export default function App() {
         </div>
 
         {/* Text-to-Speech controller inline in header if document is loaded */}
-        {activeDoc && textToSpeak && (
+        {activeDoc && (
           <div style={{ flex: 1, display: 'flex', justifyContent: 'center', margin: '0 16px' }}>
             <TTSPlayer
               text={textToSpeak}

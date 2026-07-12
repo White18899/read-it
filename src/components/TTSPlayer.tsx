@@ -40,13 +40,14 @@ export const TTSPlayer: React.FC<TTSPlayerProps> = ({
 
   // Cartesia TTS state
   const [cartesiaApiKey, setCartesiaApiKey] = useState<string>(() => {
-    return localStorage.getItem('readit-cartesia-key') || '';
+    return localStorage.getItem('readit-cartesia-key') || 'sk_car_HcFMXALTZdhm6SUUJsuUpb';
   });
   const [cartesiaVoice, setCartesiaVoice] = useState<string>(() => {
-    return localStorage.getItem('readit-cartesia-voice') || 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4';
+    return localStorage.getItem('readit-cartesia-voice') || 'f9836c6e-a0bd-460e-9d3c-f7299fa60f94';
   });
   const [isCustomCartesia, setIsCustomCartesia] = useState<boolean>(() => {
     const standardVoices = [
+      'f9836c6e-a0bd-460e-9d3c-f7299fa60f94',
       'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4',
       'f786b574-daa5-4673-aa0c-cbe3e8534c02',
       'a5136bf9-224c-4d76-b823-52bd5efcffcc',
@@ -54,7 +55,7 @@ export const TTSPlayer: React.FC<TTSPlayerProps> = ({
       'ef191366-f52f-447a-a398-ed8c0f2943a1',
       '95856005-0332-41b0-935f-352e296aa0df',
     ];
-    const currentVoice = localStorage.getItem('readit-cartesia-voice') || 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4';
+    const currentVoice = localStorage.getItem('readit-cartesia-voice') || 'f9836c6e-a0bd-460e-9d3c-f7299fa60f94';
     return !standardVoices.includes(currentVoice);
   });
   const [customCartesiaVoiceVal, setCustomCartesiaVoiceVal] = useState<string>(() => {
@@ -706,8 +707,8 @@ export const TTSPlayer: React.FC<TTSPlayerProps> = ({
             className="glass-panel animate-scale-up"
             style={{
               position: 'absolute',
-              bottom: '50px',
-              right: '-80px',
+              top: '40px',
+              right: '0px',
               display: 'flex',
               flexDirection: 'column',
               gap: '12px',
@@ -723,11 +724,12 @@ export const TTSPlayer: React.FC<TTSPlayerProps> = ({
               <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>TTS Engine</label>
               <select
                 value={voiceEngine}
-                onChange={(e) => handleEngineChange(e.target.value as 'browser' | 'openai')}
+                onChange={(e) => handleEngineChange(e.target.value as 'browser' | 'openai' | 'cartesia')}
                 style={selectStyle}
               >
                 <option value="browser">🌐 Browser Speech (Free)</option>
                 <option value="openai">✨ OpenAI AI Voice (Premium)</option>
+                <option value="cartesia">⚡ Cartesia AI Voice (Fast)</option>
               </select>
             </div>
 
@@ -854,6 +856,7 @@ export const TTSPlayer: React.FC<TTSPlayerProps> = ({
                     onChange={(e) => handleCartesiaVoiceChange(e.target.value)}
                     style={selectStyle}
                   >
+                    <option value="f9836c6e-a0bd-460e-9d3c-f7299fa60f94">🇮🇳 Indian English (Ayush/Mihir)</option>
                     <option value="db6b0ed5-d5d3-463d-ae85-518a07d3c2b4">Skylar (US Female)</option>
                     <option value="f786b574-daa5-4673-aa0c-cbe3e8534c02">Katie (US Female)</option>
                     <option value="a5136bf9-224c-4d76-b823-52bd5efcffcc">Jameson (US Male)</option>

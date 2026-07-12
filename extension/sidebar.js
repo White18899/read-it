@@ -166,8 +166,9 @@
   indianAssistCheckbox.checked = savedIndianAssist;
   indianAssistInfo.style.display = savedIndianAssist ? 'block' : 'none';
 
-  const savedCartesiaVoice = localStorage.getItem('readit-cartesia-voice') || 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4';
+  const savedCartesiaVoice = localStorage.getItem('readit-cartesia-voice') || 'f9836c6e-a0bd-460e-9d3c-f7299fa60f94';
   const standardCartesiaVoices = [
+    'f9836c6e-a0bd-460e-9d3c-f7299fa60f94',
     'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4',
     'f786b574-daa5-4673-aa0c-cbe3e8534c02',
     'a5136bf9-224c-4d76-b823-52bd5efcffcc',
@@ -184,7 +185,7 @@
     customCartesiaVoiceInput.value = savedCartesiaVoice;
   }
 
-  const savedCartesiaApiKey = localStorage.getItem('readit-cartesia-key') || '';
+  const savedCartesiaApiKey = localStorage.getItem('readit-cartesia-key') || 'sk_car_HcFMXALTZdhm6SUUJsuUpb';
   cartesiaApiKeyInput.value = savedCartesiaApiKey;
 
   function updateEngineUI(engine) {
