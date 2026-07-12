@@ -54,6 +54,7 @@ export default function App() {
 
   // TTS Synchronization State
   const [textToSpeak, setTextToSpeak] = useState<string>('');
+  const [playTrigger, setPlayTrigger] = useState<number>(0);
   const [currentWordIndex, setCurrentWordIndex] = useState<number>(-1);
   const [activeSectionId, setActiveSectionId] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -222,6 +223,7 @@ export default function App() {
     setTextToSpeak(text);
     setActiveSectionId(sectionId);
     setCurrentWordIndex(-1);
+    setPlayTrigger(prev => prev + 1);
   }, []);
 
   const handleTtsBackward = useCallback(() => {
@@ -433,6 +435,7 @@ export default function App() {
               onPlayingStateChange={setIsPlaying}
               onBackward={handleTtsBackward}
               onForward={handleTtsForward}
+              playTrigger={playTrigger}
             />
           </div>
         )}

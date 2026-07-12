@@ -4,6 +4,7 @@ export interface ChatMessage {
 }
 
 const MODELS_FALLBACK_LIST = [
+  'gemini-2.0-flash-thinking-exp-01-21',
   'gemini-3.5-flash',
   'gemini-2.5-flash',
   'gemini-1.5-flash-8b',
@@ -23,17 +24,26 @@ async function fetchWithFallback(
   for (const model of MODELS_FALLBACK_LIST) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     try {
+      // Add thinkingConfig to generationConfig if using the thinking model
+      const isThinkingModel = model.includes('thinking');
+      const requestPayload = {
+        ...payload,
+        generationConfig: {
+          temperature: isThinkingModel ? 0.7 : temperature,
+          ...(isThinkingModel ? {
+            thinkingConfig: {
+              thinkingBudget: -1 // Dynamic thinking budget
+            }
+          } : {})
+        }
+      };
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ...payload,
-          generationConfig: {
-            temperature,
-          },
-        }),
+        body: JSON.stringify(requestPayload),
       });
 
       if (!response.ok) {
@@ -49,13 +59,35 @@ async function fetchWithFallback(
       }
 
       const data = await response.json();
-      const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      const parts = data.candidates?.[0]?.content?.parts;
       
-      if (!candidateText) {
+      if (!parts || parts.length === 0) {
         throw new Error('API returned an empty response.');
       }
 
-      return candidateText;
+      // Filter and separate thought blocks from final response text
+      let thoughts = '';
+      let text = '';
+
+      for (const part of parts) {
+        if (part.thought || part.thoughtSignature) {
+          thoughts += part.text || '';
+        } else {
+          text += part.text || '';
+        }
+      }
+
+      // Fallback if no specific thought flag was identified, but multiple parts were returned
+      if (!text && parts[0]?.text) {
+        text = parts[0].text;
+      }
+
+      if (thoughts.trim()) {
+        // Return text formatted with an expandable thinking process dropdown section
+        return `:::thought\n${thoughts.trim()}\n:::\n\n${text.trim()}`;
+      }
+
+      return text;
     } catch (error: any) {
       console.warn(`Gemini Model ${model} failed, trying next fallback:`, error.message);
       lastError = error;

@@ -291,7 +291,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const renderMarkdown = (text: string) => {
-    let escaped = text
+    // Extract thoughts block if present
+    let thoughtHtml = '';
+    let mainText = text;
+
+    const thoughtMatch = text.match(/:::thought\n([\s\S]*?)\n:::/);
+    if (thoughtMatch) {
+      const thoughtContent = thoughtMatch[1]
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br />');
+      
+      thoughtHtml = `
+        <details class="thought-process-container" style="margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--background);">
+          <summary class="thought-process-header" style="cursor: pointer; padding: 6px 10px; font-size: 0.75rem; font-weight: 600; color: var(--accent); display: flex; align-items: center; gap: 6px; outline: none; user-select: none;">
+            <span>🧠 Thinking Process</span>
+          </summary>
+          <div class="thought-process-content" style="padding: 10px 12px; font-size: 0.8rem; border-top: 1px solid var(--border); color: var(--text-secondary); max-height: 200px; overflow-y: auto; line-height: 1.45; font-style: italic;">
+            ${thoughtContent}
+          </div>
+        </details>
+      `;
+      mainText = text.replace(/:::thought\n([\s\S]*?)\n:::\n\n?/, '');
+    }
+
+    let escaped = mainText
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
@@ -356,7 +381,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       html += '</ul>';
     }
 
-    return <div dangerouslySetInnerHTML={{ __html: html }} className="markdown-body" />;
+    // Prepend the thought bubble if it was generated
+    const combinedHtml = thoughtHtml + html;
+
+    return <div dangerouslySetInnerHTML={{ __html: combinedHtml }} className="markdown-body" />;
   };
 
   if (!isOpen) return null;

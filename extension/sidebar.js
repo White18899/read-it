@@ -498,20 +498,36 @@
     });
 
     try {
-      const models = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-1.5-flash-8b'];
+      const models = [
+        'gemini-2.0-flash-thinking-exp-01-21',
+        'gemini-3.5-flash',
+        'gemini-2.5-flash',
+        'gemini-1.5-flash-8b'
+      ];
       let answer = null;
       let lastError = null;
 
       for (const model of models) {
         try {
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+          const isThinkingModel = model.includes('thinking');
+          
+          const requestPayload = {
+            contents: requestHistory,
+            generationConfig: {
+              temperature: isThinkingModel ? 0.7 : 0.5,
+              ...(isThinkingModel ? {
+                thinkingConfig: {
+                  thinkingBudget: -1
+                }
+              } : {})
+            }
+          };
+
           const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: requestHistory,
-              generationConfig: { temperature: 0.5 }
-            })
+            body: JSON.stringify(requestPayload)
           });
 
           if (!response.ok) {
@@ -524,13 +540,31 @@
           }
 
           const data = await response.json();
-          const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (candidateText) {
-            answer = candidateText;
-            break;
-          } else {
+          const parts = data.candidates?.[0]?.content?.parts;
+          if (!parts || parts.length === 0) {
             throw new Error('API returned an empty response.');
           }
+
+          let thoughts = '';
+          let text = '';
+          for (const part of parts) {
+            if (part.thought || part.thoughtSignature) {
+              thoughts += part.text || '';
+            } else {
+              text += part.text || '';
+            }
+          }
+
+          if (!text && parts[0]?.text) {
+            text = parts[0].text;
+          }
+
+          if (thoughts.trim()) {
+            answer = `:::thought\n${thoughts.trim()}\n:::\n\n${text.trim()}`;
+          } else {
+            answer = text;
+          }
+          break;
         } catch (err) {
           console.warn(`Model ${model} failed:`, err);
           lastError = err;
@@ -584,12 +618,32 @@
       </div>
     `;
     chatHistoryDiv.appendChild(bubble);
-    chatHistoryDiv.scrollTop = chatHistoryDiv.scrollHeight;
-    return bubble;
-  }
-
   function renderMarkdown(text) {
-    let escaped = text
+    let thoughtHtml = '';
+    let mainText = text;
+
+    const thoughtMatch = text.match(/:::thought\n([\s\S]*?)\n:::/);
+    if (thoughtMatch) {
+      const thoughtContent = thoughtMatch[1]
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br />');
+      
+      thoughtHtml = `
+        <details class="thought-process-container" style="margin-bottom: 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--background);">
+          <summary class="thought-process-header" style="cursor: pointer; padding: 6px 10px; font-size: 0.75rem; font-weight: 600; color: var(--accent); display: flex; align-items: center; gap: 6px; outline: none; user-select: none;">
+            <span>🧠 Thinking Process</span>
+          </summary>
+          <div class="thought-process-content" style="padding: 10px 12px; font-size: 0.8rem; border-top: 1px solid var(--border); color: var(--text-secondary); max-height: 200px; overflow-y: auto; line-height: 1.45; font-style: italic;">
+            ${thoughtContent}
+          </div>
+        </details>
+      `;
+      mainText = text.replace(/:::thought\n([\s\S]*?)\n:::\n\n?/, '');
+    }
+
+    let escaped = mainText
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
@@ -654,7 +708,7 @@
       html += '</ul>';
     }
 
-    return `<div class="markdown-body">${html}</div>`;
+    return thoughtHtml + `<div class="markdown-body">${html}</div>`;
   }
 
 })();
